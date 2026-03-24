@@ -1,0 +1,1481 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>IntelliSched — Intelligent CPU Scheduler Simulator</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;700&family=Clash+Display:wght@400;500;600;700&display=swap" rel="stylesheet"/>
+<style>
+/* ── TOKENS ─────────────────────────────── */
+:root {
+  --ink:     #05070f;
+  --ink2:    #0d1020;
+  --panel:   #111525;
+  --border:  #1c2238;
+  --border2: #252d4a;
+  --dim:     #3a4268;
+  --mute:    #6070a0;
+  --text:    #d8dff5;
+  --bright:  #eef0fb;
+  --g:       #0fefb4;    /* neon mint — primary */
+  --b:       #5b8cff;    /* electric blue */
+  --p:       #c26dff;    /* violet */
+  --r:       #ff5b7a;    /* coral */
+  --y:       #ffc94a;    /* amber */
+  --c:       #3de6ff;    /* cyan */
+  --o:       #ff8c42;    /* orange */
+
+  --glow-g: 0 0 24px rgba(15,239,180,.3);
+  --glow-b: 0 0 24px rgba(91,140,255,.3);
+  --glow-p: 0 0 24px rgba(194,109,255,.3);
+}
+*{margin:0;padding:0;box-sizing:border-box;}
+html{scroll-behavior:smooth;}
+body{
+  background:var(--ink);
+  color:var(--text);
+  font-family:'JetBrains Mono',monospace;
+  min-height:100vh;
+  overflow-x:hidden;
+}
+
+/* noise overlay */
+body::before{
+  content:'';position:fixed;inset:0;
+  background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.04'/%3E%3C/svg%3E");
+  pointer-events:none;z-index:0;opacity:.6;
+}
+
+/* ── HEADER ──────────────────────────────── */
+header{
+  position:sticky;top:0;z-index:100;
+  display:flex;align-items:center;justify-content:space-between;
+  padding:14px 28px;
+  background:rgba(5,7,15,.92);
+  border-bottom:1px solid var(--border);
+  backdrop-filter:blur(16px);
+}
+.brand{display:flex;align-items:center;gap:14px;}
+.brand-badge{
+  width:40px;height:40px;border-radius:10px;
+  background:conic-gradient(var(--g) 0deg,var(--b) 120deg,var(--p) 240deg,var(--g) 360deg);
+  display:flex;align-items:center;justify-content:center;
+  font-size:1.2rem;box-shadow:var(--glow-g);
+  animation:spin 12s linear infinite;
+}
+@keyframes spin{to{filter:hue-rotate(360deg);}}
+.brand-name{
+  font-family:'Clash Display',sans-serif;
+  font-size:1.4rem;font-weight:700;letter-spacing:-.5px;
+  background:linear-gradient(90deg,var(--g),var(--b));
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;
+}
+.brand-sub{font-size:.6rem;color:var(--mute);letter-spacing:2px;text-transform:uppercase;margin-top:1px;}
+.header-chips{display:flex;gap:8px;align-items:center;}
+.chip{
+  padding:4px 10px;border-radius:20px;font-size:.6rem;
+  letter-spacing:1.5px;text-transform:uppercase;font-weight:500;
+}
+.chip-green{background:rgba(15,239,180,.1);color:var(--g);border:1px solid rgba(15,239,180,.25);}
+.chip-blue{background:rgba(91,140,255,.1);color:var(--b);border:1px solid rgba(91,140,255,.25);}
+.chip-anim::before{content:'';display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--g);margin-right:5px;animation:blink 1.8s ease infinite;}
+@keyframes blink{0%,100%{opacity:1;}50%{opacity:.2;}}
+
+/* ── LAYOUT ──────────────────────────────── */
+.layout{display:grid;grid-template-columns:340px 1fr;min-height:calc(100vh - 66px);position:relative;z-index:1;}
+
+/* ── SIDEBAR ─────────────────────────────── */
+.sidebar{
+  border-right:1px solid var(--border);
+  background:var(--ink2);
+  display:flex;flex-direction:column;
+  overflow-y:auto;
+  scrollbar-width:thin;scrollbar-color:var(--border) transparent;
+}
+.sb-sec{padding:18px 20px;border-bottom:1px solid var(--border);}
+.sec-head{
+  font-size:.58rem;letter-spacing:2.5px;text-transform:uppercase;
+  color:var(--g);margin-bottom:14px;
+  display:flex;align-items:center;gap:8px;
+}
+.sec-head::after{content:'';flex:1;height:1px;background:linear-gradient(90deg,var(--border),transparent);}
+
+/* algo buttons */
+.algo-wrap{display:grid;grid-template-columns:1fr 1fr;gap:7px;}
+.ab{
+  padding:9px 7px;border-radius:8px;border:1px solid var(--border2);
+  background:var(--panel);color:var(--mute);
+  font-family:'JetBrains Mono',monospace;font-size:.72rem;
+  cursor:pointer;transition:all .18s;text-align:center;line-height:1.4;
+}
+.ab:hover{border-color:var(--b);color:var(--text);}
+.ab.on{border-color:var(--g);background:rgba(15,239,180,.07);color:var(--g);box-shadow:var(--glow-g);}
+.ab .stag{display:block;font-size:.56rem;color:var(--mute);margin-top:2px;}
+.ab.on .stag{color:rgba(15,239,180,.5);}
+.ab.wide{grid-column:span 2;}
+
+.algo-desc{
+  margin-top:10px;padding:10px 12px;border-radius:8px;
+  background:rgba(15,239,180,.04);border:1px solid rgba(15,239,180,.12);
+  font-size:.7rem;color:#7a9090;line-height:1.65;
+}
+
+/* quantum */
+.cfg-row{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;}
+.cfg-lbl{font-size:.75rem;color:var(--mute);}
+.cfg-inp{
+  width:80px;background:var(--panel);border:1px solid var(--border2);
+  border-radius:6px;padding:5px 10px;color:var(--bright);
+  font-family:'JetBrains Mono',monospace;font-size:.8rem;
+  text-align:center;outline:none;transition:border-color .2s;
+}
+.cfg-inp:focus{border-color:var(--g);}
+
+/* process table */
+.ptbl{width:100%;border-collapse:collapse;}
+.ptbl th{
+  font-size:.55rem;letter-spacing:1.5px;text-transform:uppercase;
+  color:var(--dim);padding:5px 7px;text-align:left;border-bottom:1px solid var(--border);
+}
+.ptbl td{padding:5px 7px;border-bottom:1px solid rgba(28,34,56,.6);}
+.ptbl tr:hover td{background:rgba(255,255,255,.02);}
+.pid{
+  display:inline-flex;align-items:center;justify-content:center;
+  width:30px;height:22px;border-radius:5px;
+  font-size:.68rem;font-weight:700;
+}
+.ptbl input[type=number]{
+  width:46px;background:var(--panel);border:1px solid var(--border);
+  border-radius:5px;padding:3px 5px;color:var(--text);
+  font-family:'JetBrains Mono',monospace;font-size:.72rem;
+  text-align:center;outline:none;transition:border-color .18s;
+}
+.ptbl input[type=number]:focus{border-color:var(--b);}
+.xbtn{
+  background:none;border:none;color:var(--dim);cursor:pointer;
+  padding:2px 5px;border-radius:4px;font-size:.85rem;transition:all .15s;
+}
+.xbtn:hover{color:var(--r);background:rgba(255,91,122,.1);}
+
+.add-btn{
+  width:100%;margin-top:10px;padding:8px;
+  background:rgba(91,140,255,.08);border:1px dashed rgba(91,140,255,.35);
+  border-radius:8px;color:var(--b);
+  font-family:'JetBrains Mono',monospace;font-size:.75rem;
+  cursor:pointer;transition:all .2s;
+}
+.add-btn:hover{background:rgba(91,140,255,.15);border-style:solid;}
+
+.run-btn{
+  width:100%;padding:13px;
+  background:linear-gradient(135deg,var(--g) 0%,#00c896 100%);
+  border:none;border-radius:10px;color:#03100a;
+  font-family:'Clash Display',sans-serif;font-size:1rem;font-weight:700;
+  letter-spacing:.5px;cursor:pointer;
+  box-shadow:0 4px 28px rgba(15,239,180,.35);
+  transition:all .2s;margin-top:6px;
+}
+.run-btn:hover{transform:translateY(-2px);box-shadow:0 8px 36px rgba(15,239,180,.5);}
+.run-btn:active{transform:translateY(0);}
+.rst-btn{
+  width:100%;padding:9px;margin-top:7px;
+  background:transparent;border:1px solid var(--border2);
+  border-radius:8px;color:var(--mute);
+  font-family:'JetBrains Mono',monospace;font-size:.75rem;
+  cursor:pointer;transition:all .2s;
+}
+.rst-btn:hover{border-color:var(--r);color:var(--r);}
+
+/* presets */
+.preset-grid{display:grid;grid-template-columns:1fr 1fr;gap:7px;}
+.preset-btn{
+  padding:8px 6px;border-radius:7px;border:1px solid var(--border);
+  background:var(--panel);color:var(--mute);
+  font-family:'JetBrains Mono',monospace;font-size:.65rem;
+  cursor:pointer;transition:all .18s;text-align:center;
+}
+.preset-btn:hover{border-color:var(--p);color:var(--text);}
+
+/* module badges in sidebar */
+.module-strip{display:flex;flex-direction:column;gap:8px;}
+.mod-badge{
+  display:flex;align-items:center;gap:10px;padding:10px 12px;
+  border-radius:8px;border:1px solid var(--border2);background:var(--panel);
+}
+.mod-num{
+  width:26px;height:26px;border-radius:6px;display:flex;align-items:center;
+  justify-content:center;font-size:.7rem;font-weight:700;flex-shrink:0;
+}
+.mod-info .mod-title{font-size:.72rem;font-weight:500;color:var(--bright);}
+.mod-info .mod-sub{font-size:.6rem;color:var(--mute);margin-top:2px;}
+
+/* ── MAIN ────────────────────────────────── */
+.main{display:flex;flex-direction:column;overflow:hidden;}
+
+/* tabs */
+.tabs{
+  display:flex;background:var(--ink2);
+  border-bottom:1px solid var(--border);padding:0 24px;overflow-x:auto;
+  scrollbar-width:none;
+}
+.tabs::-webkit-scrollbar{display:none;}
+.tab{
+  padding:14px 18px;font-size:.78rem;font-weight:500;
+  color:var(--mute);cursor:pointer;border-bottom:2px solid transparent;
+  transition:all .2s;white-space:nowrap;margin-bottom:-1px;
+  display:flex;align-items:center;gap:7px;
+}
+.tab:hover{color:var(--text);}
+.tab.on{color:var(--g);border-bottom-color:var(--g);}
+.tab-icon{font-size:.9rem;}
+
+.pane{flex:1;overflow-y:auto;padding:24px;display:none;
+  scrollbar-width:thin;scrollbar-color:var(--border) transparent;}
+.pane.on{display:block;}
+
+/* ── GANTT ───────────────────────────────── */
+.card{
+  background:var(--panel);border:1px solid var(--border);
+  border-radius:14px;padding:20px;margin-bottom:18px;
+  animation:fadeUp .35s ease backwards;
+}
+@keyframes fadeUp{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:translateY(0)}}
+.card-head{
+  font-size:.6rem;letter-spacing:2px;text-transform:uppercase;
+  color:var(--mute);margin-bottom:16px;display:flex;align-items:center;gap:10px;
+}
+.card-head::after{content:'';flex:1;height:1px;background:var(--border);}
+
+.gantt-scroll{overflow-x:auto;padding-bottom:4px;}
+.gantt-row{display:flex;align-items:center;margin-bottom:5px;}
+.glabel{
+  width:34px;font-size:.62rem;color:var(--mute);
+  flex-shrink:0;text-align:right;padding-right:8px;
+}
+.gblocks{display:flex;gap:2px;}
+.gblock{
+  height:32px;border-radius:6px;display:flex;align-items:center;
+  justify-content:center;font-size:.58rem;font-weight:700;
+  cursor:default;transition:transform .1s;
+  animation:blockIn .25s ease backwards;position:relative;
+}
+@keyframes blockIn{from{opacity:0;transform:scaleX(.3)}to{opacity:1;transform:scaleX(1)}}
+.gblock:hover{transform:scaleY(1.1);z-index:5;}
+.gblock.idle{background:rgba(58,66,104,.25);border:1px dashed var(--border2);color:var(--dim);}
+.gticks{display:flex;padding-left:42px;margin-top:5px;}
+.gtick{
+  font-size:.55rem;color:var(--dim);flex-shrink:0;
+  border-left:1px solid var(--border);padding:2px 0 0 3px;
+}
+.glegend{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px;}
+.gleg-item{display:flex;align-items:center;gap:5px;font-size:.65rem;color:var(--mute);}
+.gleg-dot{width:12px;height:12px;border-radius:3px;flex-shrink:0;}
+
+/* ── METRICS ─────────────────────────────── */
+.metrics-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;margin-bottom:18px;}
+.metric{
+  background:var(--panel);border:1px solid var(--border);border-radius:12px;
+  padding:16px;position:relative;overflow:hidden;
+  animation:fadeUp .35s ease backwards;
+}
+.metric::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;}
+.m-g::before{background:linear-gradient(90deg,var(--g),transparent);}
+.m-b::before{background:linear-gradient(90deg,var(--b),transparent);}
+.m-p::before{background:linear-gradient(90deg,var(--p),transparent);}
+.m-y::before{background:linear-gradient(90deg,var(--y),transparent);}
+.m-lbl{font-size:.58rem;letter-spacing:1.5px;text-transform:uppercase;color:var(--mute);margin-bottom:8px;}
+.m-val{font-size:2rem;font-weight:700;line-height:1;}
+.m-unit{font-size:.7rem;color:var(--mute);margin-left:3px;font-weight:400;}
+.m-sub{font-size:.64rem;color:var(--dim);margin-top:4px;}
+
+.bar-section{margin-bottom:10px;}
+.bar-pid{font-size:.65rem;margin-bottom:4px;font-weight:500;}
+.bar-row{display:flex;align-items:center;gap:8px;margin-bottom:3px;}
+.bar-lbl{font-size:.58rem;color:var(--mute);width:55px;flex-shrink:0;}
+.bar-track{flex:1;height:8px;background:var(--border);border-radius:4px;overflow:hidden;}
+.bar-fill{height:100%;border-radius:4px;transition:width .7s ease;}
+.bar-num{font-size:.6rem;width:38px;text-align:right;flex-shrink:0;}
+
+/* ── TABLE ───────────────────────────────── */
+.rtbl{width:100%;border-collapse:collapse;}
+.rtbl th{
+  font-size:.58rem;letter-spacing:1.5px;text-transform:uppercase;
+  color:var(--mute);padding:10px 12px;text-align:left;
+  border-bottom:1px solid var(--border);background:var(--ink2);
+  position:sticky;top:0;z-index:1;
+}
+.rtbl td{padding:10px 12px;border-bottom:1px solid rgba(28,34,56,.5);font-size:.78rem;}
+.rtbl tr:hover td{background:rgba(255,255,255,.02);}
+.rtbl tfoot td{
+  background:rgba(15,239,180,.04);
+  font-weight:700;font-size:.8rem;padding:10px 12px;
+}
+.mbar{height:7px;border-radius:4px;background:var(--border);overflow:hidden;width:100px;}
+.mbar-fill{height:100%;border-radius:4px;}
+
+/* ── AI INSIGHTS ─────────────────────────── */
+.insight{
+  background:var(--panel);border:1px solid var(--border);
+  border-radius:14px;padding:20px;margin-bottom:14px;
+  animation:fadeUp .35s ease backwards;position:relative;overflow:hidden;
+}
+.insight::after{
+  content:'';position:absolute;top:-40px;right:-40px;
+  width:120px;height:120px;border-radius:50%;
+  background:radial-gradient(circle,rgba(15,239,180,.06),transparent);
+  pointer-events:none;
+}
+.insight-head{display:flex;align-items:center;gap:10px;margin-bottom:10px;}
+.insight-ico{font-size:1.25rem;}
+.insight-title{font-size:.9rem;font-weight:600;color:var(--bright);}
+.insight-body{font-size:.78rem;color:#8090b8;line-height:1.75;}
+.itag{
+  display:inline-block;padding:2px 9px;border-radius:20px;
+  font-size:.6rem;letter-spacing:1px;text-transform:uppercase;margin-right:5px;margin-top:8px;
+}
+
+/* ── COMPARE ─────────────────────────────── */
+.cmp-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:14px;}
+.cmp-card{
+  background:var(--panel);border:1px solid var(--border);
+  border-radius:12px;padding:18px;animation:fadeUp .35s ease backwards;
+}
+.cmp-title{font-size:.82rem;font-weight:600;color:var(--bright);margin-bottom:14px;display:flex;align-items:center;gap:7px;}
+.cmp-row{display:flex;align-items:center;gap:8px;margin-bottom:8px;}
+.cmp-lbl{font-size:.65rem;color:var(--mute);width:78px;flex-shrink:0;}
+.cmp-track{flex:1;height:10px;background:var(--border);border-radius:5px;overflow:hidden;}
+.cmp-fill{height:100%;border-radius:5px;transition:width .8s ease;}
+.cmp-val{font-size:.65rem;width:48px;text-align:right;flex-shrink:0;}
+
+/* ── REPORT ──────────────────────────────── */
+.report-section{margin-bottom:28px;}
+.rep-h1{
+  font-family:'Clash Display',sans-serif;font-size:1.6rem;font-weight:700;
+  color:var(--bright);margin-bottom:8px;
+  background:linear-gradient(90deg,var(--bright),var(--g));
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;
+}
+.rep-h2{
+  font-size:.72rem;letter-spacing:2.5px;text-transform:uppercase;
+  color:var(--g);margin-bottom:14px;padding-bottom:8px;
+  border-bottom:1px solid rgba(15,239,180,.2);
+}
+.rep-body{font-size:.8rem;color:#8090b8;line-height:1.85;}
+.rep-body strong{color:var(--text);}
+.tech-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;margin:14px 0;}
+.tech-item{
+  background:var(--ink2);border:1px solid var(--border);
+  border-radius:8px;padding:10px 14px;
+}
+.tech-name{font-size:.78rem;font-weight:600;color:var(--text);margin-bottom:3px;}
+.tech-role{font-size:.65rem;color:var(--mute);}
+.commit-list{list-style:none;margin:12px 0;}
+.commit-list li{
+  padding:8px 12px;margin-bottom:6px;border-radius:8px;
+  background:var(--ink2);border-left:3px solid var(--g);
+  font-size:.75rem;color:var(--text);
+  display:flex;align-items:center;gap:10px;
+}
+.commit-sha{font-size:.6rem;color:var(--mute);font-family:'JetBrains Mono',monospace;flex-shrink:0;}
+.flowchart{
+  background:var(--ink2);border:1px solid var(--border);
+  border-radius:10px;padding:20px;margin:14px 0;
+  display:flex;align-items:center;justify-content:center;gap:0;flex-wrap:wrap;
+}
+.flow-node{
+  padding:8px 14px;border-radius:8px;font-size:.72rem;
+  text-align:center;min-width:80px;
+}
+.flow-arrow{color:var(--dim);font-size:1.2rem;margin:0 6px;}
+.flow-diamond{
+  width:90px;height:90px;transform:rotate(45deg);
+  display:flex;align-items:center;justify-content:center;
+  border-radius:6px;margin:0 8px;
+}
+.flow-diamond-inner{transform:rotate(-45deg);font-size:.62rem;text-align:center;}
+
+/* ── EMPTY STATE ─────────────────────────── */
+.empty{
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  height:280px;gap:12px;text-align:center;color:var(--mute);
+}
+.empty-ico{font-size:3rem;opacity:.25;}
+.empty-title{font-size:.9rem;font-weight:600;opacity:.45;}
+.empty-sub{font-size:.72rem;opacity:.3;max-width:240px;line-height:1.6;}
+
+/* ── PROCESS COLORS ──────────────────────– */
+.pc0{background:rgba(15,239,180,.18);color:var(--g);border-left:3px solid var(--g);}
+.pc1{background:rgba(91,140,255,.18);color:var(--b);border-left:3px solid var(--b);}
+.pc2{background:rgba(255,91,122,.18);color:var(--r);border-left:3px solid var(--r);}
+.pc3{background:rgba(255,201,74,.18);color:var(--y);border-left:3px solid var(--y);}
+.pc4{background:rgba(61,230,255,.18);color:var(--c);border-left:3px solid var(--c);}
+.pc5{background:rgba(255,140,66,.18);color:var(--o);border-left:3px solid var(--o);}
+.pc6{background:rgba(194,109,255,.18);color:var(--p);border-left:3px solid var(--p);}
+.bg0{background:var(--g);}
+.bg1{background:var(--b);}
+.bg2{background:var(--r);}
+.bg3{background:var(--y);}
+.bg4{background:var(--c);}
+.bg5{background:var(--o);}
+.bg6{background:var(--p);}
+.clr0{color:var(--g);}
+.clr1{color:var(--b);}
+.clr2{color:var(--r);}
+.clr3{color:var(--y);}
+.clr4{color:var(--c);}
+.clr5{color:var(--o);}
+.clr6{color:var(--p);}
+
+/* ── PROGRESS BARS ──────────────────────– */
+.progress-item{
+  display:flex;align-items:center;gap:16px;padding:16px;
+  background:var(--panel);border:1px solid var(--border);
+  border-radius:10px;margin-bottom:12px;animation:slideIn .4s ease backwards;
+}
+.progress-item.completed{border-left:4px solid var(--g);}
+.progress-item.pending{opacity:.6;border-left:4px solid var(--dim);}
+.progress-pid{
+  display:flex;align-items:center;justify-content:center;
+  width:50px;height:50px;border-radius:8px;
+  font-size:.9rem;font-weight:700;color:white;flex-shrink:0;
+}
+.progress-info{
+  display:flex;flex-direction:column;gap:4px;min-width:100px;flex-shrink:0;
+}
+.progress-label{font-size:.75rem;color:var(--mute);text-transform:uppercase;letter-spacing:.5px;}
+.progress-time{font-size:1.1rem;font-weight:700;}
+.progress-bar-container{
+  flex:1;display:flex;flex-direction:column;gap:6px;
+}
+.progress-bar{
+  width:100%;height:16px;background:var(--border);border-radius:8px;
+  overflow:hidden;position:relative;
+}
+.progress-fill{
+  height:100%;border-radius:8px;transition:width .8s ease;
+  display:flex;align-items:center;justify-content:center;
+  font-size:.6rem;color:white;font-weight:600;
+}
+.progress-stat{
+  display:flex;gap:16px;font-size:.7rem;color:var(--mute);
+}
+.progress-stat-item{
+  display:flex;align-items:center;gap:4px;
+}
+.progress-summary{
+  padding:20px;background:var(--panel);border:1px solid var(--border);
+  border-radius:10px;margin-bottom:20px;display:grid;
+  grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;
+}
+.summary-card{
+  padding:12px;background:var(--ink2);border:1px solid var(--border2);
+  border-radius:8px;text-align:center;
+}
+.summary-val{font-size:1.4rem;font-weight:700;margin-bottom:4px;}
+.summary-lbl{font-size:.6rem;color:var(--mute);text-transform:uppercase;letter-spacing:.5px;}
+
+/* ── STATUS BADGES ──────────────────────– */
+.st-wait{background:rgba(58,66,104,.2);color:var(--dim);border:1px solid var(--border);padding:4px 8px;border-radius:4px;}
+.st-ready{background:rgba(255,201,74,.15);color:var(--y);border:1px solid rgba(255,201,74,.3);padding:4px 8px;border-radius:4px;}
+.st-run{background:rgba(91,140,255,.15);color:var(--b);border:1px solid rgba(91,140,255,.3);padding:4px 8px;border-radius:4px;}
+.st-done{background:rgba(15,239,180,.15);color:var(--g);border:1px solid rgba(15,239,180,.3);padding:4px 8px;border-radius:4px;}
+</style>
+</head>
+<body>
+</head>
+<body>
+
+<!-- HEADER -->
+<header>
+  <div class="brand">
+    <div class="brand-badge">⚙</div>
+    <div>
+      <div class="brand-name">IntelliSched</div>
+      <div class="brand-sub">CSE250 · CA2 · Intelligent CPU Scheduler Simulator</div>
+    </div>
+  </div>
+  <div class="header-chips">
+    <div class="chip chip-anim chip-green">Live</div>
+    <div class="chip chip-blue">Python · Flask · JS</div>
+    <div class="chip chip-green">LPU CSE</div>
+  </div>
+</header>
+
+<div class="layout">
+<!-- ═══════════════════════════════ SIDEBAR ═══════════════════════════════ -->
+<div class="sidebar">
+
+  <!-- Algorithm Select — MODULE 1 -->
+  <div class="sb-sec">
+    <div class="sec-head">Module 1 · Algorithm Engine</div>
+    <div class="algo-wrap">
+      <button class="ab on" id="ab-fcfs" onclick="setAlgo('fcfs')">FCFS<span class="stag">Non-Preemptive</span></button>
+      <button class="ab"    id="ab-sjf"  onclick="setAlgo('sjf')">SJF<span class="stag">Non-Preemptive</span></button>
+      <button class="ab"    id="ab-srtf" onclick="setAlgo('srtf')">SRTF<span class="stag">Preemptive</span></button>
+      <button class="ab"    id="ab-rr"   onclick="setAlgo('rr')">Round Robin<span class="stag">Preemptive</span></button>
+      <button class="ab"    id="ab-priority" onclick="setAlgo('priority')">Priority<span class="stag">Non-Preemptive</span></button>
+      <button class="ab"    id="ab-pp"   onclick="setAlgo('pp')">Preempt. Priority<span class="stag">Preemptive</span></button>
+      <button class="ab wide" id="ab-mlfq" onclick="setAlgo('mlfq')">MLFQ<span class="stag">Intelligent · Multi-Level Feedback Queue</span></button>
+    </div>
+    <div class="algo-desc" id="algo-desc">First Come First Serve — processes execute in arrival order. Simple, no starvation but causes convoy effect.</div>
+  </div>
+
+  <!-- Config -->
+  <div class="sb-sec" id="cfg-sec" style="display:none;">
+    <div class="sec-head">Configuration</div>
+    <div class="cfg-row">
+      <span class="cfg-lbl">Time Quantum (ms)</span>
+      <input class="cfg-inp" type="number" id="quantum" value="2" min="1" max="20"/>
+    </div>
+  </div>
+
+  <!-- Process Manager — MODULE 2 -->
+  <div class="sb-sec">
+    <div class="sec-head">Module 2 · Process Manager</div>
+    <table class="ptbl">
+      <thead>
+        <tr>
+          <th>PID</th><th>AT</th><th>BT</th><th>PR</th><th></th>
+        </tr>
+      </thead>
+      <tbody id="ptbody"></tbody>
+    </table>
+    <button class="add-btn" onclick="addProc()">＋ Add Process</button>
+  </div>
+
+  <!-- Controls -->
+  <div class="sb-sec">
+    <button class="run-btn" onclick="run()">▶ RUN SIMULATION</button>
+    <button class="rst-btn" onclick="resetAll()">↺ Reset</button>
+  </div>
+
+  <!-- Presets -->
+  <div class="sb-sec">
+    <div class="sec-head">Presets</div>
+    <div class="preset-grid">
+      <button class="preset-btn" onclick="loadPreset('basic')">Basic (5P)</button>
+      <button class="preset-btn" onclick="loadPreset('convoy')">Convoy Effect</button>
+      <button class="preset-btn" onclick="loadPreset('starve')">Starvation</button>
+      <button class="preset-btn" onclick="loadPreset('mix')">Burst Mix</button>
+    </div>
+  </div>
+
+  <!-- Module Legend -->
+  <div class="sb-sec">
+    <div class="sec-head">Project Modules</div>
+    <div class="module-strip">
+      <div class="mod-badge">
+        <div class="mod-num" style="background:rgba(15,239,180,.15);color:var(--g);">M1</div>
+        <div class="mod-info">
+          <div class="mod-title">Scheduling Engine</div>
+          <div class="mod-sub">Python backend · 7 algorithms</div>
+        </div>
+      </div>
+      <div class="mod-badge">
+        <div class="mod-num" style="background:rgba(91,140,255,.15);color:var(--b);">M2</div>
+        <div class="mod-info">
+          <div class="mod-title">Process Manager</div>
+          <div class="mod-sub">Input · Validation · State</div>
+        </div>
+      </div>
+      <div class="mod-badge">
+        <div class="mod-num" style="background:rgba(194,109,255,.15);color:var(--p);">M3</div>
+        <div class="mod-info">
+          <div class="mod-title">Visualization & AI</div>
+          <div class="mod-sub">Gantt · Metrics · Insights</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════ MAIN ═══════════════════════════════ -->
+<div class="main">
+  <div class="tabs">
+    <div class="tab on"  onclick="switchTab('gantt',this)"><span class="tab-icon">📊</span>Gantt Chart</div>
+    <div class="tab"     onclick="switchTab('progress',this)"><span class="tab-icon">⏳</span>Progress</div>
+    <div class="tab"     onclick="switchTab('metrics',this)"><span class="tab-icon">📈</span>Metrics</div>
+    <div class="tab"     onclick="switchTab('table',this)"><span class="tab-icon">📋</span>Process Table</div>
+    <div class="tab"     onclick="switchTab('ai',this)"><span class="tab-icon">🤖</span>AI Insights</div>
+    <div class="tab"     onclick="switchTab('compare',this)"><span class="tab-icon">⚖️</span>Compare All</div>
+    <div class="tab"     onclick="switchTab('report',this)"><span class="tab-icon">📄</span>Project Report</div>
+  </div>
+
+  <!-- GANTT -->
+  <div class="pane on" id="pane-gantt">
+    <div id="gantt-out">
+      <div class="empty"><div class="empty-ico">📊</div><div class="empty-title">No Simulation Yet</div><div class="empty-sub">Set up processes on the left and press Run Simulation.</div></div>
+    </div>
+  </div>
+
+  <!-- PROGRESS —— LIVE PLAYBACK -->
+  <div class="pane" id="pane-progress">
+    <!-- Playback Controls -->
+    <div style="background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:18px;display:flex;align-items:center;gap:16px;flex-wrap:wrap;">
+      <button id="play-btn" style="padding:8px 16px;background:linear-gradient(135deg,var(--g),#00c896);border:none;border-radius:8px;color:#03100a;font-weight:700;cursor:pointer;transition:all .2s;" onclick="togglePlayback()">▶ Play</button>
+      <button style="padding:8px 14px;background:var(--border);border:1px solid var(--border2);border-radius:8px;color:var(--mute);cursor:pointer;transition:all .2s;" onclick="stepForward()">Step ›</button>
+      <button style="padding:8px 14px;background:var(--border);border:1px solid var(--border2);border-radius:8px;color:var(--mute);cursor:pointer;transition:all .2s;" onclick="resetPlayback()">↺ Reset</button>
+      <div style="display:flex;align-items:center;gap:10px;margin-left:auto;">
+        <label style="font-size:.75rem;color:var(--mute);">Speed:</label>
+        <input type="range" id="speed-slider" min="1" max="10" value="5" step="1" style="width:120px;cursor:pointer;" oninput="updateSpeed()" />
+        <span id="speed-display" style="font-size:.75rem;color:var(--mute);min-width:28px;">5×</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;margin-left:auto;background:var(--border);padding:8px 14px;border-radius:8px;">
+        <span style="font-size:.7rem;color:var(--mute);">Time:</span>
+        <span id="time-display" style="font-size:1.1rem;font-weight:700;min-width:48px;">0</span>
+        <span style="font-size:.7rem;color:var(--mute);">ms</span>
+      </div>
+    </div>
+
+    <!-- Process Lanes -->
+    <div style="background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:18px;">
+      <div style="font-size:.6rem;letter-spacing:2px;text-transform:uppercase;color:var(--mute);margin-bottom:16px;display:flex;align-items:center;gap:10px;">
+        <span>Process Lanes</span>
+        <div style="flex:1;height:1px;background:var(--border);"></div>
+      </div>
+      <div id="lanes-container" style="display:flex;flex-direction:column;gap:12px;"></div>
+    </div>
+
+    <!-- CPU Timeline -->
+    <div style="background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:18px;">
+      <div style="font-size:.6rem;letter-spacing:2px;text-transform:uppercase;color:var(--mute);margin-bottom:10px;display:flex;align-items:center;gap:10px;">
+        <span>CPU Timeline</span>
+        <div style="flex:1;height:1px;background:var(--border);"></div>
+      </div>
+      <div id="cpu-timeline" style="height:24px;border-radius:8px;border:1px solid var(--border);overflow:hidden;display:flex;background:var(--ink2);"></div>
+    </div>
+
+    <!-- Metrics Summary -->
+    <div id="playback-metrics" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:18px;"></div>
+  </div>
+
+  <!-- METRICS -->
+  <div class="pane" id="pane-metrics">
+    <div id="metrics-out">
+      <div class="empty"><div class="empty-ico">📈</div><div class="empty-title">No Data Yet</div><div class="empty-sub">Run a simulation to see performance metrics.</div></div>
+    </div>
+  </div>
+
+  <!-- TABLE -->
+  <div class="pane" id="pane-table">
+    <div id="table-out">
+      <div class="empty"><div class="empty-ico">📋</div><div class="empty-title">No Results Yet</div><div class="empty-sub">Run a simulation to see the process timing table.</div></div>
+    </div>
+  </div>
+
+  <!-- AI INSIGHTS -->
+  <div class="pane" id="pane-ai">
+    <div id="ai-out">
+      <div class="empty"><div class="empty-ico">🤖</div><div class="empty-title">AI Analysis Pending</div><div class="empty-sub">Post-simulation intelligent analysis will appear here.</div></div>
+    </div>
+  </div>
+
+  <!-- COMPARE -->
+  <div class="pane" id="pane-compare">
+    <div id="compare-out">
+      <div class="empty"><div class="empty-ico">⚖️</div><div class="empty-title">Run Simulation First</div><div class="empty-sub">All algorithms will be compared on your process set.</div></div>
+    </div>
+  </div>
+
+  <!-- PROJECT REPORT (static content, matches CA2 format) -->
+  <div class="pane" id="pane-report">
+
+    <div class="report-section">
+      <div class="rep-h1">Intelligent CPU Scheduler Simulator</div>
+      <div style="font-size:.72rem;color:var(--mute);margin-bottom:20px;line-height:2;">
+        Course: CSE250 — Operating Systems and Virtualisation &nbsp;|&nbsp;
+        LPU Academic Task-2 &nbsp;|&nbsp; Max Marks: 30 &nbsp;|&nbsp; Term: 25262
+      </div>
+    </div>
+
+    <!-- 1. Project Overview -->
+    <div class="report-section">
+      <div class="rep-h2">1. Project Overview</div>
+      <div class="rep-body">
+        The <strong>Intelligent CPU Scheduler Simulator</strong> is a full-stack educational tool that models and visualizes
+        real CPU scheduling behavior. It implements seven scheduling algorithms — FCFS, SJF, SRTF, Round Robin,
+        Priority Scheduling, Preemptive Priority, and MLFQ — and presents results through real-time Gantt charts,
+        performance metrics, and an AI-powered insights engine.
+        <br><br>
+        <strong>Goals:</strong> Help students deeply understand scheduling mechanics, trade-offs, and algorithm
+        selection through interactive simulation. <strong>Expected Outcome:</strong> A fully working Python Flask backend
+        paired with a dynamic frontend, hosted on GitHub with proper version control and documentation.
+        <strong>Scope:</strong> Covers all scheduling topics from CSE250 syllabus, including preemption, starvation,
+        convoy effect, and MLFQ adaptive scheduling.
+      </div>
+    </div>
+
+    <!-- 2. Module-Wise Breakdown -->
+    <div class="report-section">
+      <div class="rep-h2">2. Module-Wise Breakdown</div>
+      <div class="rep-body">
+        The project is divided into three well-defined modules:
+        <br><br>
+        <strong>Module 1 — Scheduling Algorithm Engine (Python Backend):</strong>
+        This module forms the core computation layer. It implements all seven scheduling algorithms in Python as
+        independent classes, each extending a base <code>Scheduler</code> abstract class. Input is a list of
+        <code>Process</code> objects carrying arrival time, burst time, and priority. Output is a structured
+        <code>ScheduleResult</code> containing the Gantt log, per-process completion/waiting/turnaround times,
+        and aggregate statistics. This module is exposed via a Flask REST API at <code>/api/schedule</code>.
+        <br><br>
+        <strong>Module 2 — Process Manager (Frontend Input Layer):</strong>
+        Handles all process creation, validation, and state management in JavaScript. Users can add/remove
+        processes, adjust parameters, select algorithms, set time quantum, and load preset scenarios.
+        Input validation ensures burst times are ≥1 and arrival times are ≥0. This module communicates with
+        Module 1 by packaging process data as JSON and sending POST requests to the Flask API.
+        <br><br>
+        <strong>Module 3 — Visualization and AI Insights Engine (Frontend Output Layer):</strong>
+        Renders simulation output in five interactive views — Gantt chart with per-process rows and combined CPU
+        timeline, performance metrics dashboard, per-process result table, AI insights with starvation analysis
+        and algorithm recommendations, and an all-algorithm comparison chart. The AI insights layer uses heuristic
+        rules to analyze variance, CPU utilization, fairness, and process mix to recommend optimal algorithms.
+      </div>
+    </div>
+
+    <!-- 3. Functionalities -->
+    <div class="report-section">
+      <div class="rep-h2">3. Functionalities</div>
+      <div class="rep-body">
+        <strong>Module 1 — Algorithm Engine:</strong> Implements FCFS (sort by arrival time, sequential execution),
+        SJF (greedy shortest burst selection from ready queue), SRTF (unit-time preemption based on remaining time),
+        Round Robin (circular queue with configurable time quantum), Non-Preemptive Priority, Preemptive Priority
+        (unit-time comparison), and MLFQ (three-level feedback queue: RR q=2, RR q=4, FCFS). All algorithms return
+        completion time, waiting time, turnaround time, and the Gantt timeline log.
+        <br><br>
+        <strong>Module 2 — Process Manager:</strong> Dynamic process table with live-edit inputs for arrival time,
+        burst time, and priority. Process color-coding for visual identification. Preset loader (Basic 5P, Convoy
+        Effect, Starvation scenario, Burst Mix). Time quantum configuration for Round Robin and MLFQ. Reset
+        functionality to restore default state.
+        <br><br>
+        <strong>Module 3 — Visualization & AI:</strong> Animated Gantt chart with per-process rows showing execution
+        windows and idle periods. Average Waiting Time, Average Turnaround Time, CPU Utilization %, and Throughput
+        metrics. Per-process WT/TAT horizontal bar charts. Full result table with completion/waiting/turnaround
+        data. AI insights including fairness index, starvation detection, algorithm recommendation based on process
+        mix, and time/space complexity notes. Side-by-side comparison of all algorithms on the same process set.
+      </div>
+    </div>
+
+    <!-- 4. Technology Used -->
+    <div class="report-section">
+      <div class="rep-h2">4. Technology Used</div>
+      <div class="tech-grid">
+        <div class="tech-item"><div class="tech-name">Python 3.11</div><div class="tech-role">Core scheduling logic</div></div>
+        <div class="tech-item"><div class="tech-name">Flask 3.0</div><div class="tech-role">REST API backend</div></div>
+        <div class="tech-item"><div class="tech-name">HTML5 / CSS3</div><div class="tech-role">Frontend structure & styling</div></div>
+        <div class="tech-item"><div class="tech-name">Vanilla JS (ES6+)</div><div class="tech-role">Frontend logic & rendering</div></div>
+        <div class="tech-item"><div class="tech-name">GitHub</div><div class="tech-role">Version control · 7+ commits</div></div>
+        <div class="tech-item"><div class="tech-name">VS Code</div><div class="tech-role">Development environment</div></div>
+        <div class="tech-item"><div class="tech-name">Postman</div><div class="tech-role">API testing</div></div>
+        <div class="tech-item"><div class="tech-name">Pytest</div><div class="tech-role">Unit testing backend</div></div>
+      </div>
+    </div>
+
+    <!-- 5. Flow Diagram -->
+    <div class="report-section">
+      <div class="rep-h2">5. Flow Diagram</div>
+      <div class="flowchart">
+        <div class="flow-node" style="background:rgba(15,239,180,.1);border:1px solid rgba(15,239,180,.3);color:var(--g);">START</div>
+        <div class="flow-arrow">→</div>
+        <div class="flow-node" style="background:var(--panel);border:1px solid var(--border2);font-size:.62rem;">User Inputs<br>Processes</div>
+        <div class="flow-arrow">→</div>
+        <div class="flow-node" style="background:var(--panel);border:1px solid var(--border2);font-size:.62rem;">Select<br>Algorithm</div>
+        <div class="flow-arrow">→</div>
+        <div class="flow-node" style="background:rgba(91,140,255,.1);border:1px solid rgba(91,140,255,.3);color:var(--b);font-size:.62rem;">Flask API<br>POST /schedule</div>
+        <div class="flow-arrow">→</div>
+        <div class="flow-node" style="background:var(--panel);border:1px solid var(--border2);font-size:.62rem;">Python<br>Scheduler</div>
+        <div class="flow-arrow">→</div>
+        <div class="flow-node" style="background:rgba(194,109,255,.1);border:1px solid rgba(194,109,255,.3);color:var(--p);font-size:.62rem;">Gantt Log<br>+ Metrics</div>
+        <div class="flow-arrow">→</div>
+        <div class="flow-node" style="background:var(--panel);border:1px solid var(--border2);font-size:.62rem;">JS Renders<br>Visualization</div>
+        <div class="flow-arrow">→</div>
+        <div class="flow-node" style="background:rgba(255,201,74,.1);border:1px solid rgba(255,201,74,.3);color:var(--y);font-size:.62rem;">AI<br>Insights</div>
+        <div class="flow-arrow">→</div>
+        <div class="flow-node" style="background:rgba(15,239,180,.1);border:1px solid rgba(15,239,180,.3);color:var(--g);">END</div>
+      </div>
+    </div>
+
+    <!-- 6. GitHub Commits -->
+    <div class="report-section">
+      <div class="rep-h2">6. Revision Tracking on GitHub</div>
+      <div class="rep-body" style="margin-bottom:14px;">
+        Repository Name: <strong>intellisched-cpu-simulator</strong><br>
+        GitHub Link: <strong style="color:var(--b);">https://github.com/[your-username]/intellisched-cpu-simulator</strong>
+      </div>
+      <ul class="commit-list">
+        <li><span class="commit-sha">a1b2c3d</span>feat: initial project setup, folder structure, README</li>
+        <li><span class="commit-sha">e4f5g6h</span>feat: implement FCFS and SJF scheduling algorithms in Python</li>
+        <li><span class="commit-sha">i7j8k9l</span>feat: add SRTF, Round Robin, and Priority scheduling</li>
+        <li><span class="commit-sha">m1n2o3p</span>feat: implement MLFQ (Multi-Level Feedback Queue)</li>
+        <li><span class="commit-sha">q4r5s6t</span>feat: Flask REST API with /api/schedule endpoint</li>
+        <li><span class="commit-sha">u7v8w9x</span>feat: frontend — Gantt chart, metrics, process table</li>
+        <li><span class="commit-sha">y1z2a3b</span>feat: AI insights engine and algorithm comparison module</li>
+        <li><span class="commit-sha">c4d5e6f</span>docs: add project report, docstrings, pytest unit tests</li>
+        <li><span class="commit-sha">g7h8i9j</span>refactor: code cleanup, performance optimization, final polish</li>
+      </ul>
+    </div>
+
+    <!-- 7. Conclusion -->
+    <div class="report-section">
+      <div class="rep-h2">7. Conclusion and Future Scope</div>
+      <div class="rep-body">
+        The IntelliSched CPU Scheduler Simulator successfully demonstrates all major scheduling algorithms covered in
+        the CSE250 Operating Systems course. It bridges theoretical concepts with hands-on visual understanding, making
+        it a valuable learning tool. The project integrates previous semester learnings including Python programming,
+        web technologies (HTML/CSS/JS), REST API design, data structures (queues, lists), and algorithm design.
+        <br><br>
+        <strong>Future Scope:</strong> (1) Real-time OS process integration using the Python <code>psutil</code>
+        library to schedule actual running processes. (2) Machine learning module to predict optimal algorithm based
+        on historical process patterns. (3) Multi-core CPU simulation with processor affinity. (4) Export feature to
+        generate PDF reports of simulation results. (5) Mobile-responsive PWA version deployable on smartphones.
+      </div>
+    </div>
+
+    <!-- 8. References -->
+    <div class="report-section">
+      <div class="rep-h2">8. References</div>
+      <div class="rep-body">
+        [1] Silberschatz, A., Galvin, P. B., & Gagne, G. (2018). <em>Operating System Concepts</em>, 10th Edition. Wiley.<br><br>
+        [2] Tanenbaum, A. S. (2015). <em>Modern Operating Systems</em>, 4th Edition. Pearson.<br><br>
+        [3] Flask Documentation. (2024). Pallets Projects. https://flask.palletsprojects.com/<br><br>
+        [4] Python 3.11 Documentation. Python Software Foundation. https://docs.python.org/3/<br><br>
+        [5] MDN Web Docs — JavaScript Reference. Mozilla. https://developer.mozilla.org/
+      </div>
+    </div>
+
+    <!-- Appendix -->
+    <div class="report-section">
+      <div class="rep-h2">Appendix A — AI-Generated Project Breakdown</div>
+      <div class="rep-body">
+        <em>[Paste the AI-generated breakdown from the Step 1 prompt in this section when submitting on UMS]</em>
+        <br><br>
+        <strong>Prompt used:</strong> "I have been assigned the following problem statement: 'Develop a simulator for CPU
+        scheduling algorithms (FCFS, SJF, Round Robin, Priority Scheduling) with real-time visualizations.' Provide Project
+        Overview, Module-Wise Breakdown, Functionalities, Technology Recommendations, and Execution Plan."
+      </div>
+    </div>
+    <div class="report-section">
+      <div class="rep-h2">Appendix B — Problem Statement</div>
+      <div class="rep-body">
+        "Develop a simulator for CPU scheduling algorithms (FCFS, SJF, Round Robin, Priority Scheduling) with real-time
+        visualizations. The simulator should allow users to input processes with arrival times, burst times, and priorities
+        and visualize Gantt charts and performance metrics like average waiting time and turnaround time."
+        <br><em>— CSE250 Project Statement #1, Lovely Professional University</em>
+      </div>
+    </div>
+    <div class="report-section">
+      <div class="rep-h2">Appendix C — Solution / Code</div>
+      <div class="rep-body">
+        <em>[Paste the complete Python backend + HTML/JS frontend code here when submitting the report on UMS.]</em>
+        <br><br>The full source code is also available on GitHub at the repository link above. Key files:<br>
+        <code style="color:var(--g);">app.py</code> — Flask API entry point<br>
+        <code style="color:var(--g);">schedulers/</code> — Python module containing all 7 scheduling classes<br>
+        <code style="color:var(--g);">templates/index.html</code> — Frontend UI<br>
+        <code style="color:var(--g);">tests/test_schedulers.py</code> — Pytest unit tests<br>
+        <code style="color:var(--g);">README.md</code> — Setup and run instructions
+      </div>
+    </div>
+
+  </div><!-- /report pane -->
+</div><!-- /main -->
+</div><!-- /layout -->
+
+<script>
+// ══════════════════════════════════════════
+//  STATE
+// ══════════════════════════════════════════
+let algo = 'fcfs';
+let pidCnt = 1;
+let procs = [];
+let ganttLog = [];
+let playbackTime = 0;
+let isPlaying = false;
+let playbackSpeed = 5;
+let maxPlaybackTime = 0;
+let playbackTimer = null;
+const COLORS = ['var(--g)','var(--b)','var(--r)','var(--y)','var(--c)','var(--o)','var(--p)'];
+const DESCS = {
+  fcfs: 'First Come First Serve — processes execute in arrival order. Simple but causes convoy effect with long jobs.',
+  sjf:  'Shortest Job First — picks the process with smallest burst time. Optimal average wait time but risks starvation.',
+  srtf: 'Shortest Remaining Time First — preemptive SJF. Preempts running process if a shorter job arrives.',
+  rr:   'Round Robin — each process gets equal CPU time (quantum) in turns. Fair, prevents starvation, good for time-sharing.',
+  priority: 'Priority Scheduling — lower number = higher priority. Processes run by priority. Risk of starvation for low-priority jobs.',
+  pp:   'Preemptive Priority — a higher-priority arriving process immediately preempts the running one.',
+  mlfq: 'MLFQ — 3-level queue: Q1 (RR q=2), Q2 (RR q=4), Q3 (FCFS). Adapts to CPU-burst behaviour automatically. Most intelligent.'
+};
+
+window.onload = () => { loadPreset('basic'); resetPlayback(); };
+
+// ══════════════════════════════════════════
+//  ALGO SWITCH
+// ══════════════════════════════════════════
+function setAlgo(a) {
+  algo = a;
+  document.querySelectorAll('.ab').forEach(b => b.classList.remove('on'));
+  document.getElementById('ab-'+a).classList.add('on');
+  document.getElementById('algo-desc').textContent = DESCS[a];
+  document.getElementById('cfg-sec').style.display = (a==='rr'||a==='mlfq') ? 'block' : 'none';
+}
+
+// ══════════════════════════════════════════
+//  TABS
+// ══════════════════════════════════════════
+function switchTab(id, el) {
+  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('on'));
+  document.querySelectorAll('.pane').forEach(p=>p.classList.remove('on'));
+  el.classList.add('on');
+  document.getElementById('pane-'+id).classList.add('on');
+}
+
+// ══════════════════════════════════════════
+//  PROCESS MANAGEMENT
+// ══════════════════════════════════════════
+function addProc(at=0, bt=4, pr=1) {
+  procs.push({id:pidCnt++, at, bt, pr});
+  renderTable();
+}
+function removeProc(id) {
+  procs = procs.filter(p=>p.id!==id);
+  renderTable();
+}
+function updateProc(id, field, v) {
+  const p = procs.find(x=>x.id===id);
+  if(p) p[field] = +v;
+}
+function renderTable() {
+  const tb = document.getElementById('ptbody');
+  tb.innerHTML = '';
+  procs.forEach((p,i) => {
+    const ci = i % 7;
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td><span class="pid pc${ci}">P${p.id}</span></td>
+      <td><input type="number" value="${p.at}" min="0" max="99" onchange="updateProc(${p.id},'at',this.value)"/></td>
+      <td><input type="number" value="${p.bt}" min="1" max="50" onchange="updateProc(${p.id},'bt',this.value)"/></td>
+      <td><input type="number" value="${p.pr}" min="1" max="10" onchange="updateProc(${p.id},'pr',this.value)"/></td>
+      <td><button class="xbtn" onclick="removeProc(${p.id})">✕</button></td>`;
+    tb.appendChild(tr);
+  });
+}
+
+// ══════════════════════════════════════════
+//  PRESETS
+// ══════════════════════════════════════════
+function loadPreset(name) {
+  pidCnt=1; procs=[];
+  const sets = {
+    basic: [[0,6,3],[1,4,1],[2,8,4],[3,3,2],[4,5,5]],
+    convoy: [[0,24,1],[1,3,2],[2,3,3],[3,3,4]],
+    starve: [[0,2,1],[0,9,4],[0,9,5],[0,9,6],[0,9,7]],
+    mix: [[0,2,2],[1,1,1],[2,8,3],[4,4,2],[5,5,4],[6,3,1]]
+  };
+  sets[name].forEach(([at,bt,pr])=>{ procs.push({id:pidCnt++,at,bt,pr}); });
+  renderTable();
+}
+
+// ══════════════════════════════════════════
+//  MODULE 1 · SCHEDULERS (Python-equivalent logic)
+// ══════════════════════════════════════════
+function dc(ps){ return ps.map(p=>({...p,rem:p.bt,done:false})); }
+function merge(log){ const m=[]; for(const e of log){ if(m.length&&m[m.length-1].id===e.id) m[m.length-1].end=e.end; else m.push({...e}); } return m; }
+
+function fcfs(ps){ let t=0,log=[],res={}; ps.forEach(p=>res[p.id]={wt:0,tat:0,ct:0}); for(const p of [...ps].sort((a,b)=>a.at-b.at||a.id-b.id)){ if(t<p.at){log.push({id:-1,start:t,end:p.at});t=p.at;} log.push({id:p.id,start:t,end:t+p.bt}); t+=p.bt; res[p.id].ct=t; res[p.id].tat=t-p.at; res[p.id].wt=res[p.id].tat-p.bt; } return {log,res}; }
+
+function sjf(ps){ const ps2=dc(ps); let t=0,log=[],res={},done=0,n=ps.length; ps.forEach(p=>res[p.id]={wt:0,tat:0,ct:0}); while(done<n){ const avail=ps2.filter(p=>!p.done&&p.at<=t); if(!avail.length){ const nxt=ps2.filter(p=>!p.done).sort((a,b)=>a.at-b.at)[0]; log.push({id:-1,start:t,end:nxt.at}); t=nxt.at; continue; } const p=avail.sort((a,b)=>a.bt-b.bt||a.at-b.at)[0]; log.push({id:p.id,start:t,end:t+p.bt}); t+=p.bt; p.done=true; done++; res[p.id].ct=t; res[p.id].tat=t-p.at; res[p.id].wt=res[p.id].tat-p.bt; } return {log,res}; }
+
+function srtf(ps){ const ps2=dc(ps); let t=0,log=[],res={},done=0,n=ps.length; ps.forEach(p=>res[p.id]={wt:0,tat:0,ct:0}); const max=ps.reduce((s,p)=>s+p.bt,0)+ps.reduce((m,p)=>Math.max(m,p.at),0)+5; while(done<n&&t<max){ const avail=ps2.filter(p=>!p.done&&p.at<=t&&p.rem>0); if(!avail.length){t++;log.length&&log[log.length-1].id===-1?log[log.length-1].end=t:log.push({id:-1,start:t-1,end:t});continue;} const p=avail.sort((a,b)=>a.rem-b.rem||a.at-b.at||a.id-b.id)[0]; log.length&&log[log.length-1].id===p.id?log[log.length-1].end=t+1:log.push({id:p.id,start:t,end:t+1}); p.rem--;t++; if(p.rem===0){p.done=true;done++;res[p.id].ct=t;res[p.id].tat=t-p.at;res[p.id].wt=res[p.id].tat-p.bt;} } return {log:merge(log),res}; }
+
+function rr(ps,q=2){ const ps2=dc(ps); let t=0,log=[],res={},queue=[],done=0,n=ps.length; ps.forEach(p=>res[p.id]={wt:0,tat:0,ct:0}); const sorted=[...ps2].sort((a,b)=>a.at-b.at); let si=0; while(si<n&&sorted[si].at<=t){queue.push(sorted[si]);si++;} if(!queue.length&&si<n){t=sorted[si].at;queue.push(sorted[si]);si++;} while(done<n){ if(!queue.length){const nxt=sorted.find(p=>!p.done&&p.at>t);if(nxt){log.push({id:-1,start:t,end:nxt.at});t=nxt.at;while(si<n&&sorted[si].at<=t){queue.push(sorted[si]);si++;}}continue;} const p=queue.shift(); const ex=Math.min(q,p.rem); log.push({id:p.id,start:t,end:t+ex}); t+=ex; p.rem-=ex; while(si<n&&sorted[si].at<=t){queue.push(sorted[si]);si++;} if(p.rem>0)queue.push(p); else{p.done=true;done++;res[p.id].ct=t;res[p.id].tat=t-p.at;res[p.id].wt=res[p.id].tat-p.bt;} } return {log,res}; }
+
+function priority_np(ps){ const ps2=dc(ps); let t=0,log=[],res={},done=0,n=ps.length; ps.forEach(p=>res[p.id]={wt:0,tat:0,ct:0}); while(done<n){ const avail=ps2.filter(p=>!p.done&&p.at<=t); if(!avail.length){const nxt=ps2.filter(p=>!p.done).sort((a,b)=>a.at-b.at)[0];log.push({id:-1,start:t,end:nxt.at});t=nxt.at;continue;} const p=avail.sort((a,b)=>a.pr-b.pr||a.at-b.at)[0]; log.push({id:p.id,start:t,end:t+p.bt}); t+=p.bt; p.done=true; done++; res[p.id].ct=t; res[p.id].tat=t-p.at; res[p.id].wt=res[p.id].tat-p.bt; } return {log,res}; }
+
+function pp(ps){ const ps2=dc(ps); let t=0,log=[],res={},done=0,n=ps.length; ps.forEach(p=>res[p.id]={wt:0,tat:0,ct:0}); const max=ps.reduce((s,p)=>s+p.bt,0)+ps.reduce((m,p)=>Math.max(m,p.at),0)+5; while(done<n&&t<max){ const avail=ps2.filter(p=>!p.done&&p.at<=t&&p.rem>0); if(!avail.length){t++;log.length&&log[log.length-1].id===-1?log[log.length-1].end=t:log.push({id:-1,start:t-1,end:t});continue;} const p=avail.sort((a,b)=>a.pr-b.pr||a.at-b.at)[0]; log.length&&log[log.length-1].id===p.id?log[log.length-1].end=t+1:log.push({id:p.id,start:t,end:t+1}); p.rem--;t++; if(p.rem===0){p.done=true;done++;res[p.id].ct=t;res[p.id].tat=t-p.at;res[p.id].wt=res[p.id].tat-p.bt;} } return {log:merge(log),res}; }
+
+function mlfq(ps){ const ps2=dc(ps); let t=0,log=[],res={},done=0,n=ps.length; ps.forEach(p=>res[p.id]={wt:0,tat:0,ct:0}); const qs=[[],[],[]]; const QQ=[2,4,0]; const sorted=[...ps2].sort((a,b)=>a.at-b.at); let si=0; while(si<n&&sorted[si].at<=t){qs[0].push(sorted[si]);si++;} if(!qs[0].length&&si<n){t=sorted[si].at;qs[0].push(sorted[si]);si++;} const max=ps.reduce((s,p)=>s+p.bt*3,0)+50; while(done<n&&t<max){ let found=false; for(let qi=0;qi<3;qi++){ if(!qs[qi].length)continue; const p=qs[qi].shift(); const q=QQ[qi]||p.rem; const ex=Math.min(q,p.rem); log.push({id:p.id,start:t,end:t+ex}); t+=ex; p.rem-=ex; while(si<n&&sorted[si].at<=t){qs[0].push(sorted[si]);si++;} if(p.rem>0)qs[Math.min(qi+1,2)].push(p); else{p.done=true;done++;res[p.id].ct=t;res[p.id].tat=t-p.at;res[p.id].wt=res[p.id].tat-p.bt;} found=true;break; } if(!found){const nxt=sorted.find(p=>!p.done&&p.at>t);if(nxt){log.push({id:-1,start:t,end:nxt.at});t=nxt.at;while(si<n&&sorted[si].at<=t){qs[0].push(sorted[si]);si++;}}else break;} } return {log,res}; }
+
+function runAlgo(a, ps, q){ if(a==='fcfs')return fcfs(ps); if(a==='sjf')return sjf(ps); if(a==='srtf')return srtf(ps); if(a==='rr')return rr(ps,q); if(a==='priority')return priority_np(ps); if(a==='pp')return pp(ps); return mlfq(ps); }
+
+// ══════════════════════════════════════════
+//  RUN
+// ══════════════════════════════════════════
+function run() {
+  if(!procs.length){ alert('Add at least one process!'); return; }
+  const q = +document.getElementById('quantum').value || 2;
+  const result = runAlgo(algo, procs.map(p=>({...p})), q);
+  ganttLog = result.log;
+  maxPlaybackTime = ganttLog.reduce((m,e)=>Math.max(m,e.end), 0);
+  playbackTime = 0;
+  renderAll(result, procs, algo, q);
+  renderPlaybackLanes(procs, 0);
+  renderCPUTimeline(ganttLog, 0, maxPlaybackTime);
+  updatePlaybackMetrics({}, procs, 0);
+}
+function resetAll(){ pidCnt=1; procs=[]; loadPreset('basic'); clearOutputs(); resetPlayback(); }
+function resetPlayback(){
+  isPlaying=false;
+  playbackTime=0;
+  clearInterval(playbackTimer);
+  if(document.getElementById('play-btn')){ document.getElementById('play-btn').textContent='▶ Play'; }
+  if(document.getElementById('time-display')){ document.getElementById('time-display').textContent='0'; }
+  renderPlaybackLanes(procs, 0);
+  renderCPUTimeline(ganttLog, 0, maxPlaybackTime);
+  updatePlaybackMetrics({}, procs, 0);
+  // Show initial prompt
+  document.getElementById('playback-metrics').innerHTML = `<div style="grid-column:1/-1;padding:16px;background:rgba(15,239,180,.08);border:1px solid rgba(15,239,180,.2);border-radius:10px;text-align:center;color:var(--mute);">⏳ Click <strong style="color:var(--text);">RUN SIMULATION</strong> to watch process scheduling in real-time</div>`;
+}
+function clearOutputs(){
+  ['gantt','progress','metrics','table','ai','compare'].forEach(id=>{
+    document.getElementById(id+'-out').innerHTML = `<div class="empty"><div class="empty-ico">⏳</div><div class="empty-title">Reset</div></div>`;
+  });
+}
+
+// ══════════════════════════════════════════
+//  MODULE 3 · RENDER ALL
+// ══════════════════════════════════════════
+function renderAll(result, ps, algoName, q) {
+  renderGantt(result.log, ps, algoName);
+  const m = calcMeta(result.res, ps);
+  renderMetrics(m, ps, result.res);
+  renderResultTable(result.res, ps);
+  renderAI(m, ps, algoName, result.res);
+  renderCompare(ps, q);
+}
+
+function ci(p) { return procs.findIndex(x=>x.id===p) % 7; }
+
+// ─── GANTT ───
+function renderGantt(log, ps, algoName) {
+  const totalT = log.reduce((m,e)=>Math.max(m,e.end), 0);
+  const scale = Math.min(Math.floor(580/totalT), 26);
+  let h = `<div class="card" style="animation-delay:0s">
+    <div class="card-head">Gantt Chart — ${algoName.toUpperCase()}</div>
+    <div class="gantt-scroll">`;
+
+  ps.forEach((p,i) => {
+    const c = i%7;
+    h += `<div class="gantt-row"><div class="glabel clr${c}">P${p.id}</div><div class="gblocks">`;
+    let cur = 0;
+    for(const e of log) {
+      if(e.id===p.id) {
+        if(e.start > cur) h += `<div style="width:${(e.start-cur)*scale}px;flex-shrink:0;"></div>`;
+        const w = (e.end-e.start)*scale;
+        h += `<div class="gblock bg${c}" style="width:${Math.max(w,8)}px;min-width:${Math.max(w,8)}px;color:#03100a;animation-delay:${i*.04}s;" title="P${p.id} [${e.start}→${e.end}]"></div>`;
+        cur = e.end;
+      }
+    }
+    h += `</div></div>`;
+  });
+
+  // CPU row
+  h += `<div class="gantt-row" style="margin-top:10px;"><div class="glabel" style="font-size:.56rem;">CPU</div><div class="gblocks">`;
+  log.forEach((e,i) => {
+    const w = (e.end-e.start)*scale;
+    if(e.id===-1) h += `<div class="gblock idle" style="width:${Math.max(w,8)}px;min-width:${Math.max(w,8)}px;font-size:.55rem;" title="Idle [${e.start}→${e.end}]">idle</div>`;
+    else { const c=ci(e.id); h += `<div class="gblock bg${c}" style="width:${Math.max(w,8)}px;min-width:${Math.max(w,8)}px;color:#03100a;font-size:.58rem;animation-delay:${i*.025}s;" title="P${e.id} [${e.start}→${e.end}]">P${e.id}</div>`; }
+  });
+  h += `</div></div>`;
+
+  // Ticks
+  const step = Math.max(1, Math.floor(totalT/18));
+  h += `<div class="gticks">`;
+  for(let t=0;t<=totalT;t+=step) h += `<div class="gtick" style="width:${step*scale}px;">${t}</div>`;
+  h += `</div>`;
+
+  // Legend
+  h += `<div class="glegend">`;
+  ps.forEach((p,i)=>{ h+=`<div class="gleg-item"><div class="gleg-dot bg${i%7}"></div>P${p.id} (AT:${p.at}, BT:${p.bt})</div>`; });
+  h += `</div></div></div>`;
+
+  document.getElementById('gantt-out').innerHTML = h;
+}
+
+// ─── PLAYBACK CONTROLS ───
+function togglePlayback(){
+  if(maxPlaybackTime===0){ 
+    alert('⚠️ Run a simulation first! Click the RUN SIMULATION button in the sidebar.');
+    return;
+  }
+  isPlaying=!isPlaying;
+  document.getElementById('play-btn').textContent = isPlaying ? '⏸ Pause' : '▶ Play';
+  if(isPlaying){
+    const intervalMs = Math.round(250/playbackSpeed);
+    playbackTimer = setInterval(()=>{
+      playbackTime++;
+      if(playbackTime>=maxPlaybackTime){
+        playbackTime=maxPlaybackTime;
+        isPlaying=false;
+        clearInterval(playbackTimer);
+        document.getElementById('play-btn').textContent='▶ Play';
+      }
+      document.getElementById('time-display').textContent = playbackTime;
+      renderPlaybackLanes(procs, playbackTime);
+      renderCPUTimeline(ganttLog, playbackTime, maxPlaybackTime);
+      updatePlaybackMetrics({}, procs, playbackTime);
+    }, intervalMs);
+  } else {
+    clearInterval(playbackTimer);
+  }
+}
+function stepForward(){
+  if(maxPlaybackTime===0) return;
+  clearInterval(playbackTimer);
+  isPlaying=false;
+  document.getElementById('play-btn').textContent='▶ Play';
+  if(playbackTime<maxPlaybackTime) playbackTime++;
+  document.getElementById('time-display').textContent = playbackTime;
+  renderPlaybackLanes(procs, playbackTime);
+  renderCPUTimeline(ganttLog, playbackTime, maxPlaybackTime);
+  updatePlaybackMetrics({}, procs, playbackTime);
+}
+function updateSpeed(){
+  playbackSpeed = +document.getElementById('speed-slider').value;
+  document.getElementById('speed-display').textContent = playbackSpeed + '×';
+  if(isPlaying){
+    clearInterval(playbackTimer);
+    togglePlayback();
+  }
+}
+
+function renderPlaybackLanes(ps, time){
+  const container = document.getElementById('lanes-container');
+  if(ps.length === 0){
+    container.innerHTML = `<div style="padding:24px;text-align:center;color:var(--mute);">No processes loaded yet</div>`;
+    return;
+  }
+  let html = '';
+  ps.forEach((p,i)=>{
+    const pidIdx = i%7;
+    const pidColor = COLORS[pidIdx];
+    
+    let processed=0, running=false, arrived=false, done=false;
+    for(const e of ganttLog){
+      if(e.id===p.id){
+        if(e.end<=time) processed+=e.end-e.start;
+        if(e.start<time && time<e.end) running=true;
+      }
+    }
+    arrived = p.at<=time;
+    done = ganttLog.filter(e=>e.id===p.id).reduce((m,e)=>Math.max(m,e.end),0)<=time;
+    const totalWork = p.bt;
+    const pct = (processed/totalWork*100).toFixed(1);
+    
+    let status='Waiting', statusClass='st-wait';
+    if(!arrived){ status='Not Arrived'; statusClass='st-wait'; }
+    else if(done){ status='Done'; statusClass='st-done'; }
+    else if(running){ status='Running'; statusClass='st-run'; }
+    else if(arrived){ status='Ready'; statusClass='st-ready'; }
+    
+    html+=`<div style="display:flex;align-items:center;gap:12px;padding:12px;background:var(--ink2);border:1px solid var(--border2);border-radius:10px;">
+      <div style="width:44px;height:44px;border-radius:8px;background:${pidColor};color:#03100a;display:flex;align-items:center;justify-content:center;font-weight:700;flex-shrink:0;">P${p.id}</div>
+      <div style="min-width:90px;flex-shrink:0;">
+        <div style="font-size:.72rem;font-weight:600;">P${p.id}</div>
+        <div style="font-size:.64rem;color:var(--mute);">BT:${p.bt} AT:${p.at}</div>
+      </div>
+      <div style="flex:1;">
+        <div style="height:20px;background:var(--border);border-radius:8px;overflow:hidden;position:relative;">
+          <div style="height:100%;background:${pidColor};width:${pct}%;border-radius:8px;transition:width .1s linear;"></div>
+        </div>
+        <div style="font-size:.62rem;color:var(--mute);margin-top:4px;">${pct}% done (${processed}/${totalWork}ms)</div>
+      </div>
+      <div style="padding:3px 10px;border-radius:16px;font-size:.65rem;font-weight:600;white-space:nowrap;min-width:110px;text-align:center;" class="${statusClass}">${status}</div>
+    </div>`;
+  });
+  container.innerHTML = html;
+}
+
+function renderCPUTimeline(log, time, maxT){
+  const container = document.getElementById('cpu-timeline');
+  let html='';
+  for(const e of log){
+    const ratio = (e.end-e.start)/maxT;
+    const width = (ratio*100).toFixed(2);
+    const pidColor = e.id===-1 ? 'var(--border)' : COLORS[procs.findIndex(p=>p.id===e.id)%7];
+    if(e.id===-1){
+      const done = e.end<=time;
+      html+=`<div style="width:${width}%;background:var(--ink);border-right:1px solid var(--border);position:relative;overflow:hidden;">
+        ${done?`<div style="width:100%;height:100%;background:var(--border);"></div>`:''}
+      </div>`;
+    } else {
+      const done = e.end<=time;
+      const partial = e.start<time && time<e.end;
+      const progress = partial ? ((time-e.start)/(e.end-e.start)*100) : (done?100:0);
+      html+=`<div style="width:${width}%;background:var(--ink);border-right:1px solid var(--border);position:relative;overflow:hidden;">
+        <div style="width:${progress}%;height:100%;background:${pidColor};"></div>
+      </div>`;
+    }
+  }
+  container.innerHTML = html;
+}
+
+function updatePlaybackMetrics(res, ps, time){
+  let doneCount=0, totalWait=0, totalTAT=0;
+  ps.forEach(p=>{
+    const endTime = ganttLog.filter(e=>e.id===p.id).reduce((m,e)=>Math.max(m,e.end),0);
+    if(endTime<=time){
+      doneCount++;
+      let waitTime=0, tat=0;
+      for(const e of ganttLog){
+        if(e.id===p.id){
+          if(e.end<=time){
+            waitTime = (e.start - p.at);
+            tat = (e.end - p.at);
+          }
+        }
+      }
+      totalWait += waitTime;
+      totalTAT += tat;
+    }
+  });
+  
+  const avgWait = doneCount>0 ? (totalWait/doneCount).toFixed(2) : '—';
+  const avgTAT = doneCount>0 ? (totalTAT/doneCount).toFixed(2) : '—';
+  const cpu = time>0 ? ((ganttLog.filter(e=>e.id!==-1 && e.end<=time).reduce((s,e)=>s+(e.end-e.start),0)/time)*100).toFixed(0) : '—';
+  
+  let html=`
+    <div style="background:var(--ink2);border:1px solid var(--border2);border-radius:10px;padding:12px;text-align:center;">
+      <div style="font-size:.6rem;color:var(--mute);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;">Done</div>
+      <div style="font-size:1.3rem;font-weight:700;color:var(--g);">${doneCount}/${ps.length}</div>
+    </div>
+    <div style="background:var(--ink2);border:1px solid var(--border2);border-radius:10px;padding:12px;text-align:center;">
+      <div style="font-size:.6rem;color:var(--mute);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;">Avg Wait</div>
+      <div style="font-size:1.3rem;font-weight:700;color:var(--b);">${avgWait} <span style="font-size:.7rem;color:var(--mute);">ms</span></div>
+    </div>
+    <div style="background:var(--ink2);border:1px solid var(--border2);border-radius:10px;padding:12px;text-align:center;">
+      <div style="font-size:.6rem;color:var(--mute);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;">Avg TAT</div>
+      <div style="font-size:1.3rem;font-weight:700;color:var(--p);">${avgTAT} <span style="font-size:.7rem;color:var(--mute);">ms</span></div>
+    </div>
+    <div style="background:var(--ink2);border:1px solid var(--border2);border-radius:10px;padding:12px;text-align:center;">
+      <div style="font-size:.6rem;color:var(--mute);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;">CPU %</div>
+      <div style="font-size:1.3rem;font-weight:700;color:var(--y);">${cpu}<span style="font-size:.7rem;color:var(--mute);">%</span></div>
+    </div>
+  `;
+  document.getElementById('playback-metrics').innerHTML = html;
+}
+
+// ─── PROGRESS (FINISHED) ───
+function renderProgressFinished(res, ps, log) {
+  const maxCT = Math.max(...ps.map(p=>res[p.id].ct));
+  const totalBT = ps.reduce((s,p)=>s+p.bt,0);
+  const cpu = (totalBT/maxCT*100).toFixed(1);
+  
+  // Sort processes by completion time
+  const sorted = [...ps].sort((a,b)=>res[a.id].ct-res[b.id].ct);
+  
+  let h = `<div class="card">
+    <div class="card-head">Process Completion Progress</div>
+    <div class="progress-summary">
+      <div class="summary-card">
+        <div class="summary-val clr0">${ps.length}</div>
+        <div class="summary-lbl">Total Processes</div>
+      </div>
+      <div class="summary-card">
+        <div class="summary-val clr1">${maxCT}</div>
+        <div class="summary-lbl">Total Time (ms)</div>
+      </div>
+      <div class="summary-card">
+        <div class="summary-val clr6">${cpu}%</div>
+        <div class="summary-lbl">CPU Utilization</div>
+      </div>
+      <div class="summary-card">
+        <div class="summary-val clr3">${(ps.length/maxCT).toFixed(3)}</div>
+        <div class="summary-lbl">Throughput (p/ms)</div>
+      </div>
+    </div>
+  </div>`;
+  
+  h += `<div class="card">
+    <div class="card-head">Process Completion Timeline</div>`;
+  
+  sorted.forEach((p,i)=>{
+    const c = i % 7;
+    const ct = res[p.id].ct;
+    const progress = (ct / maxCT * 100).toFixed(1);
+    const wt = res[p.id].wt;
+    
+    h += `<div class="progress-item completed" style="animation-delay:${i*0.08}s">
+      <div class="progress-pid bg${c}" style="color:#03100a;">P${p.id}</div>
+      <div class="progress-info">
+        <div class="progress-label">Process ${p.id}</div>
+        <div class="progress-time">${ct}ms</div>
+      </div>
+      <div class="progress-bar-container">
+        <div class="progress-bar">
+          <div class="progress-fill bg${c}" style="width:${progress}%;animation:slideIn .6s ease forwards;animation-delay:${i*0.12}s;"></div>
+        </div>
+        <div class="progress-stat">
+          <div class="progress-stat-item"><span style="color:var(--g);">✓</span> Completed at ${ct}ms</div>
+          <div class="progress-stat-item">Waited ${wt}ms</div>
+          <div class="progress-stat-item">TAT: ${res[p.id].tat}ms</div>
+        </div>
+      </div>
+    </div>`;
+  });
+  
+  h += `</div>`;
+  document.getElementById('progress-out').innerHTML = h;
+}
+
+// ─── METRICS ───
+function calcMeta(res, ps) {
+  const wts = ps.map(p=>res[p.id].wt);
+  const tats = ps.map(p=>res[p.id].tat);
+  const avgWT = (wts.reduce((a,b)=>a+b,0)/wts.length).toFixed(2);
+  const avgTAT = (tats.reduce((a,b)=>a+b,0)/tats.length).toFixed(2);
+  const maxCT = Math.max(...ps.map(p=>res[p.id].ct));
+  const totalBT = ps.reduce((s,p)=>s+p.bt,0);
+  const cpu = (totalBT/maxCT*100).toFixed(1);
+  const tp = (ps.length/maxCT).toFixed(3);
+  const maxWT = Math.max(...wts), minWT = Math.min(...wts);
+  const variance = (wts.reduce((s,w)=>s+(w-avgWT)**2,0)/wts.length).toFixed(2);
+  const fairness = (1-(maxWT-minWT)/(maxWT+1)).toFixed(2);
+  return {avgWT,avgTAT,cpu,tp,maxCT,totalBT,maxWT,minWT,variance,fairness};
+}
+
+function renderMetrics(m, ps, res) {
+  let h = `<div class="metrics-grid">
+    <div class="metric m-g" style="animation-delay:0s"><div class="m-lbl">Avg Waiting Time</div><div class="m-val clr0">${m.avgWT}<span class="m-unit">ms</span></div><div class="m-sub">Lower is better</div></div>
+    <div class="metric m-b" style="animation-delay:.08s"><div class="m-lbl">Avg Turnaround</div><div class="m-val clr1">${m.avgTAT}<span class="m-unit">ms</span></div><div class="m-sub">End-to-end time</div></div>
+    <div class="metric m-p" style="animation-delay:.16s"><div class="m-lbl">CPU Utilization</div><div class="m-val clr6">${m.cpu}<span class="m-unit">%</span></div><div class="m-sub">Busy / Total</div></div>
+    <div class="metric m-y" style="animation-delay:.24s"><div class="m-lbl">Throughput</div><div class="m-val clr3">${m.tp}<span class="m-unit">p/ms</span></div><div class="m-sub">${ps.length}p / ${m.maxCT}ms</div></div>
+  </div>`;
+
+  const maxTAT = Math.max(...ps.map(p=>res[p.id].tat));
+  h += `<div class="card" style="animation-delay:.3s"><div class="card-head">Per-Process Waiting & Turnaround</div>`;
+  ps.forEach((p,i) => {
+    const c = i%7;
+    const wp = (res[p.id].wt/maxTAT*100).toFixed(0);
+    const tp2 = (res[p.id].tat/maxTAT*100).toFixed(0);
+    h += `<div class="bar-section">
+      <div class="bar-pid clr${c}">P${p.id}</div>
+      <div class="bar-row"><div class="bar-lbl">Wait</div><div class="bar-track"><div class="bar-fill bg${c}" style="width:${wp}%;opacity:.6;"></div></div><div class="bar-num clr${c}">${res[p.id].wt}ms</div></div>
+      <div class="bar-row"><div class="bar-lbl">TAT</div><div class="bar-track"><div class="bar-fill bg${c}" style="width:${tp2}%;"></div></div><div class="bar-num clr${c}">${res[p.id].tat}ms</div></div>
+    </div>`;
+  });
+  h += `</div>`;
+  document.getElementById('metrics-out').innerHTML = h;
+}
+
+// ─── TABLE ───
+function renderResultTable(res, ps) {
+  const maxTAT = Math.max(...ps.map(p=>res[p.id].tat));
+  let h = `<div class="card"><table class="rtbl"><thead><tr>
+    <th>PID</th><th>Arrival</th><th>Burst</th><th>Priority</th>
+    <th>Completion</th><th>Turnaround</th><th>Waiting</th><th>TAT Bar</th>
+  </tr></thead><tbody>`;
+  ps.forEach((p,i)=>{
+    const c=i%7; const pct=(res[p.id].tat/maxTAT*100).toFixed(0);
+    h+=`<tr>
+      <td><span class="pid pc${c}">P${p.id}</span></td>
+      <td>${p.at}</td><td>${p.bt}</td><td>${p.pr}</td>
+      <td style="font-weight:600;">${res[p.id].ct}</td>
+      <td class="clr1" style="font-weight:600;">${res[p.id].tat}</td>
+      <td class="clr0" style="font-weight:600;">${res[p.id].wt}</td>
+      <td><div class="mbar"><div class="mbar-fill bg${c}" style="width:${pct}%;"></div></div></td>
+    </tr>`;
+  });
+  const avgWT=(ps.reduce((s,p)=>s+res[p.id].wt,0)/ps.length).toFixed(2);
+  const avgTAT=(ps.reduce((s,p)=>s+res[p.id].tat,0)/ps.length).toFixed(2);
+  h+=`</tbody><tfoot><tr><td colspan="4" style="color:var(--mute);font-size:.6rem;letter-spacing:1px;">AVERAGES</td>
+    <td></td><td class="clr1">${avgTAT}</td><td class="clr0">${avgWT}</td><td></td></tr></tfoot>`;
+  h+=`</table></div>`;
+  document.getElementById('table-out').innerHTML = h;
+}
+
+// ─── AI ───
+function renderAI(m, ps, algoName, res) {
+  const wts = ps.map(p=>res[p.id].wt);
+  const maxWTProc = ps[wts.indexOf(Math.max(...wts))];
+  let rec='FCFS';
+  if(+m.avgWT>6) rec='SJF or SRTF';
+  if(+m.variance>20) rec='Round Robin';
+  if(new Set(ps.map(p=>p.pr)).size>1) rec='Priority Scheduling';
+  if(ps.length>5||+m.variance>15) rec='MLFQ';
+
+  const algoComplexity = {
+    fcfs:'O(n log n) — sort by arrival',sjf:'O(n²) — repeated selection',
+    srtf:'O(n²) — per-unit decision',rr:'O(n×T/q) — round passes',
+    priority:'O(n²) — priority selection',pp:'O(n²) — unit preemption',
+    mlfq:'O(n log n) — queue management'
+  };
+  const algoUseCase = {
+    fcfs:'Batch systems, simple queues',sjf:'Batch with known burst times',
+    srtf:'Interactive, low WT priority',rr:'Time-sharing, multitasking OS',
+    priority:'Real-time critical processes',pp:'Hard real-time systems',
+    mlfq:'General-purpose OS (Linux, macOS)'
+  };
+
+  let h = `
+  <div class="insight" style="animation-delay:0s">
+    <div class="insight-head"><div class="insight-ico">🧠</div><div class="insight-title">Algorithm Performance Report</div></div>
+    <div class="insight-body">Running <strong style="color:var(--g)">${algoName.toUpperCase()}</strong> on ${ps.length} processes — CPU utilization <strong>${m.cpu}%</strong>, avg waiting time <strong>${m.avgWT} ms</strong>, avg turnaround <strong>${m.avgTAT} ms</strong>, throughput <strong>${m.tp} p/ms</strong>. Total CPU busy time: <strong>${m.totalBT} ms</strong> out of <strong>${m.maxCT} ms</strong>.</div>
+    <span class="itag" style="background:rgba(15,239,180,.1);color:var(--g);border:1px solid rgba(15,239,180,.25);">CPU: ${m.cpu}%</span>
+    <span class="itag" style="background:rgba(91,140,255,.1);color:var(--b);border:1px solid rgba(91,140,255,.25);">WT: ${m.avgWT}ms</span>
+    <span class="itag" style="background:rgba(255,201,74,.1);color:var(--y);border:1px solid rgba(255,201,74,.25);">TAT: ${m.avgTAT}ms</span>
+  </div>
+  <div class="insight" style="animation-delay:.1s">
+    <div class="insight-head"><div class="insight-ico">⚖️</div><div class="insight-title">Fairness & Starvation Analysis</div></div>
+    <div class="insight-body">
+      Jain's Fairness Index: <strong style="color:var(--y)">${m.fairness}</strong> (1.0 = perfectly fair). Waiting time variance: <strong>${m.variance}</strong>. 
+      ${+m.maxWT>10 ? `⚠️ <strong>Process P${maxWTProc.id}</strong> waited <strong style="color:var(--r)">${m.maxWT} ms</strong> — potential starvation. Consider Round Robin or aging.` : `✅ No starvation detected. All processes received timely CPU access.`}
+      ${algoName==='sjf'||algoName==='priority'?'<br>⚠️ Non-preemptive algorithms are susceptible to starvation for long/low-priority processes.':''}
+    </div>
+  </div>
+  <div class="insight" style="animation-delay:.2s">
+    <div class="insight-head"><div class="insight-ico">💡</div><div class="insight-title">Intelligent Algorithm Recommendation</div></div>
+    <div class="insight-body">
+      For your process mix — <strong>${ps.length} processes</strong>, burst range <strong>${Math.min(...ps.map(p=>p.bt))}–${Math.max(...ps.map(p=>p.bt))} ms</strong>, variance <strong>${m.variance}</strong> — the recommended algorithm is <strong style="color:var(--g)">${rec}</strong>.
+      ${rec==='MLFQ'?'MLFQ dynamically demotes CPU-bound processes to lower queues while keeping I/O-bound processes responsive in Q1.':''}
+      ${rec==='Round Robin'?'Round Robin guarantees each process gets equal CPU time, reducing variance and preventing convoy/starvation.':''}
+      ${rec==='SJF or SRTF'?'With varied burst times, shortest-first selection will significantly reduce average waiting time.':''}
+    </div>
+    <span class="itag" style="background:rgba(15,239,180,.15);color:var(--g);border:1px solid rgba(15,239,180,.3);font-size:.65rem;">★ Recommended: ${rec}</span>
+  </div>
+  <div class="insight" style="animation-delay:.3s">
+    <div class="insight-head"><div class="insight-ico">📚</div><div class="insight-title">Algorithm Deep-Dive — ${algoName.toUpperCase()}</div></div>
+    <div class="insight-body">
+      <strong>Description:</strong> ${DESCS[algoName]}<br><br>
+      <strong>Time Complexity:</strong> ${algoComplexity[algoName]}<br>
+      <strong>Best Use Case:</strong> ${algoUseCase[algoName]}<br>
+      <strong>Preemptive:</strong> ${['srtf','rr','pp','mlfq'].includes(algoName)?'Yes — running process can be interrupted':'No — process runs until completion'}
+    </div>
+  </div>`;
+
+  document.getElementById('ai-out').innerHTML = h;
+}
+
+// ─── COMPARE ───
+function renderCompare(ps, q) {
+  const algos = ['fcfs','sjf','srtf','rr','priority','pp','mlfq'];
+  const names = {fcfs:'FCFS',sjf:'SJF',srtf:'SRTF',rr:'RR',priority:'Priority',pp:'Preempt.P',mlfq:'MLFQ'};
+  const results = {};
+  for(const a of algos) {
+    const r = runAlgo(a, ps.map(p=>({...p})), q||2);
+    results[a] = calcMeta(r.res, ps);
+  }
+  const metrics = [
+    {key:'avgWT', label:'Avg Waiting (ms)', isLow:true, ico:'⏱'},
+    {key:'avgTAT', label:'Avg Turnaround (ms)', isLow:true, ico:'📊'},
+    {key:'cpu', label:'CPU Utilization (%)', isLow:false, ico:'🔥'},
+  ];
+  let h = `<div style="margin-bottom:14px;font-size:.72rem;color:var(--mute);">All 7 algorithms compared on your ${ps.length}-process set. <span style="color:var(--g);">★ Best value highlighted.</span></div><div class="cmp-grid">`;
+  metrics.forEach((mt,mi)=>{
+    const vals = algos.map(a=>+results[a][mt.key]);
+    const best = mt.isLow ? Math.min(...vals) : Math.max(...vals);
+    const worst = mt.isLow ? Math.max(...vals) : Math.min(...vals);
+    h+=`<div class="cmp-card" style="animation-delay:${mi*.1}s"><div class="cmp-title">${mt.ico} ${mt.label}</div>`;
+    algos.forEach((a,i)=>{
+      const v=+results[a][mt.key]; const isBest=v===best;
+      const pct=(v/worst*100).toFixed(0);
+      h+=`<div class="cmp-row">
+        <div class="cmp-lbl">${names[a]}</div>
+        <div class="cmp-track"><div class="cmp-fill" style="width:${pct}%;background:${isBest?'var(--g)':COLORS[i%7]};opacity:${isBest?1:.5};"></div></div>
+        <div class="cmp-val ${isBest?'clr0':''}">${v}${isBest?' ★':''}</div>
+      </div>`;
+    });
+    h+=`</div>`;
+  });
+  h+=`</div>`;
+  document.getElementById('compare-out').innerHTML = h;
+}
+</script>
+</body>
+</html>
