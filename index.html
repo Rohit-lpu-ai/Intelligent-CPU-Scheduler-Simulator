@@ -1038,6 +1038,8 @@ function setAlgo(a) {
     document.getElementById('priority-toggle-btn').disabled = true;
     document.getElementById('priority-toggle-btn').title = 'Priority required for this algorithm';
   } else {
+    showPriority = false;
+    document.getElementById('priority-toggle-btn').classList.remove('active');
     document.getElementById('priority-toggle-btn').disabled = false;
     document.getElementById('priority-toggle-btn').title = 'Toggle priority column visibility';
   }
